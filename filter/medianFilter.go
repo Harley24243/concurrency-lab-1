@@ -60,6 +60,10 @@ func medianFilter(startY, endY, startX, endX int, data func(y, x int) uint8) [][
 	return filteredMatrix
 }
 
+func worker(startY, endY, startX, endX int, data func(y, x int) uint8, part chan [][]uint8) {
+	part <- medianFilter(startY, endY, startX, endX, data)
+}
+
 // getPixelData transfers an image.Image to a standard 2D slice.
 func getPixelData(img image.Image) [][]uint8 {
 	bounds := img.Bounds()
@@ -114,11 +118,29 @@ func filter(filepathIn, filepathOut string, threads int) {
 
 	immutableData := makeImmutableMatrix(getPixelData(img))
 	var newPixelData [][]uint8
-	
+
 	if threads == 1 {
 		newPixelData = medianFilter(0, height, 0, width, immutableData)
 	} else {
-		panic("TODO Implement me")
+		partHeight := height / threads
+		for startY := 0; startY < height; startY += partHeight {
+			startYL := startY - 2
+			if startYL < 0 {
+				startYL = 0
+			}
+			endY := startY + partHeight
+			if endY > height {
+				endY = height
+			}
+			endYL := endY + 2
+			if endYL > height {
+				endYL = height
+			}
+			part := make(chan [][]uint8)
+			go worker(startYL, endYL, 0, width, immutableData, part)
+			filtered := (<-part)[startY-startYL : endY-startYL]
+			newPixelData = append(newPixelData, filtered...)
+		}
 	}
 
 	imout := image.NewGray(image.Rect(0, 0, width, height))
